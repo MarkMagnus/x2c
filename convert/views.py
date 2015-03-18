@@ -1,79 +1,68 @@
 import os
 from django.http import StreamingHttpResponse, HttpResponse
 from django.core.servers.basehttp import FileWrapper
-from convert.models import WorkBook, WorkSheet, FormatNotSupported, convert
-from convert.serializers import WorkBookSerializers, WookSheetSerializer
-from rest_framework import status, views
+from django.shortcuts import get_object_or_404
+from convert.models import File, Conversion, FormatNotSupported, convert_to_csv, unzip
+from convert.serializers import FileSerializer, ConversionSerializer
+from rest_framework import status, views, viewsets
+from rest_framework.decorators import detail_route
 from rest_framework.response import Response
-from rest_framework.parsers import JSONParser, FileUploadParser
-from rest_framework.decorators import api_view, parser_classes
+from rest_framework.parsers import FileUploadParser
 
 
 class FileUploadView(views.APIView):
     parser_classes = (FileUploadParser,)
 
-    def put(self, request, filename):
+    def post(self, request, filename):
 
         try:
-            workbook = WorkBook.create(request.data['file'], filename)
-            convert(workbook)
-            serializer = WorkBookSerializers(workbook)
+            file_record = File.create(request.data['file'], filename)
+            serializer = FileSerializer(file_record)
             return Response(serializer.data)
         except FormatNotSupported:
             return Response(status=status.HTTP_406_NOT_ACCEPTABLE)
 
-@api_view(['GET', 'POST'])
-@parser_classes((JSONParser,FileUploadParser ))
-def workbooks_list(request):
 
-    if request.method == 'GET':
-        workbooks = WorkBook.objects.all()
-        serializer = WorkBookSerializer(workbooks, many=True)
-        return Response(serializer.data)
+class FileViewSet(viewsets.ModelViewSet):
 
-    elif request.method == 'POST':
-        data = FileUploadParser.parse(request)
-        serializer = WorkBookSerializers(workbook, data=data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    queryset = File.objects.all()
+    serializer_class = FileSerializer
 
+    @detail_route(method=['get'])
+    def to_csv(self, request, pk=None):
+        queryset = File.objects.all()
+        file_record = get_object_or_404(queryset, pk=pk)
+        try:
+            files = convert_to_csv(file_record)
+            serializer = FileSerializer(files, many=True)
+            return Response(serializer.data)
+        except FormatNotSupported:
+            return Response(status=status.HTTP_406_NOT_ACCEPTABLE)
 
-@api_view(['GET', 'DELETE'])
-@parser_classes((JSONParser, ))
-def workbook_detail(request, pk):
-    """
-    List all code snippets, or create a new snippet.
-    """
-    try:
-        workbook = WorkBook.objects.get(pk=pk)
-    except WorkBook.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+    @detail_route(method=['get'])
+    def unzip(self, request, pk=None):
+        queryset = File.object.all()
+        file_record = get_object_or_404(queryset, pk=pk)
+        try:
+            files = unzip(file_record)
+            serializer = FileSerializer(files, many=True)
+            return Response(serializer.data)
+        except FormatNotSupported:
+            return Response(status=status.HTTP_406_NOT_ACCEPTABLE)
 
-    if request.method == 'GET':
-        serializer = WorkBookSerializers(workbook)
-        return Response(serializer.data)
-
-    elif request.method == 'DELETE':
-        workbook.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-def worksheet_detail(request, pk):
-
-    try:
-        worksheet = WorkSheet.objects.get(pk=pk)
-    except WorkSheet.DoesNotExist:
-        return HttpResponse(status=status.HTTP_404_NOT_FOUND)
-
-    if request.method == 'GET':
-        response = StreamingHttpResponse(FileWrapper(open(worksheet.sheet_path), 8192), content_type="text/csv")
-        response['Content-Length'] = os.path.getsize(worksheet.sheet_path)
-        response['Content-Disposition'] = "attachment; filename=%s" % worksheet.sheet_name
+    @detail_route(method=['get'])
+    def download(self, request, pk=None):
+        queryset = File.objects.all()
+        file_record = get_object_or_404(queryset, pk=pk)
+        response = StreamingHttpResponse(FileWrapper(open(file_record.file_path), 8192), content_type="text/csv")
+        response['Content-Length'] = os.path.getsize(file_record.file_path)
+        response['Content-Disposition'] = "attachment; filename=%s" % file_record.file_name
         return response
 
-def index(request):
-    return HttpResponse("Hi Converter")
+
+class ConversionViewSet(viewsets.ModelViewSet):
+
+    queryset = Conversion.objects.all()
+    serializer_class = ConversionSerializer
 
 

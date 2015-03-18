@@ -1,5 +1,5 @@
 from django.contrib import admin
-from convert.models import WorkBook, WorkSheet
+from convert.models import File, Conversion
 
-admin.site.register(WorkBook)
-admin.site.register(WorkSheet)
+admin.site.register(File)
+admin.site.register(Conversion)

@@ -87,5 +87,6 @@ STATIC_URL = '/static/'
 REST_FRAMEWORK = {
     'DEFAULT_PARSER_CLASSES': (
         'rest_framework.parsers.JSONParser',
-    )
+    ),
+    'PAGE_SIZE': 10
 }

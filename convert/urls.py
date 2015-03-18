@@ -1,13 +1,15 @@
 __author__ = 'mark'
 
-from django.conf.urls import url
-from rest_framework.urlpatterns import format_suffix_patterns
+from django.conf.urls import url, include
+from rest_framework import routers
 from convert import views
 
-urlpatterns = [
-    url(r'^workbook/$', views.workbooks_list),
-    url(r'^workbook/(?P<pk>[0-9]+)$', views.workbook_detail),
-    url(r'^worksheet/(?P<pk>[0-9]+)$', views.worksheet_detail),
-]
+router = routers.DefaultRouter
+router.register(r'file', views.FileViewSet)
+router.register(r'file/upload', views.FileUploadView)
+router.register(r'conversion', views.ConversionViewSet)
 
-urlpatterns = format_suffix_patterns(urlpatterns)
+urlpatterns = [
+    url(r'^', include(router.urls)),
+    url(r'^api-auth', include('rest_framework.urls', namespace='rest_framework'))
+]

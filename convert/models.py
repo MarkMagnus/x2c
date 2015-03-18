@@ -20,10 +20,13 @@ def get_new_path(file_name):
 
 XLS = 'xls'
 XLSX = 'xlsx'
-FORMAT_CHOICES = ((XLS, XLS), (XLSX, XLSX))
+CSV = 'csv'
+ZIP = 'zip'
+ANY = 'any'
+FORMAT_CHOICES = ((XLS, XLS), (XLSX, XLSX), (CSV, CSV), (ZIP, ZIP), (ANY, ANY))
 
 
-class WorkBook(models.Model):
+class File(models.Model):
     file_name = models.CharField(max_length=200, default='')
     file_path = models.TextField(default='')
     format = models.CharField(max_length=4, default=XLS, choices=FORMAT_CHOICES)
@@ -33,35 +36,44 @@ class WorkBook(models.Model):
         return self.file_name.replace(self.file_name, '')
 
     @classmethod
+    def extract_format(cls, file_name):
+        if file_name.lower().endswith('.xls'):
+            return XLS
+        elif file_name.lower().endswith('.xlsx'):
+            return XLSX
+        elif file_name.lower().endswith('.csv'):
+            return CSV
+        else:
+            raise FormatNotSupported(file_name + ' is invalid type')
+
+    @classmethod
     def create(cls, file_object, file_name):
 
         file_path = get_new_path(file_name)
         shutil.move(file_object, file_path)
+        file_format = cls.extract_format(file_name)
 
-        if file_path.lower().endswith('.xls'):
-            file_format = XLS
-        elif file_path.lower().endswith('.xlsx'):
-            file_format = XLSX
-        else:
-            raise FormatNotSupported(file_name + ' is invalid type')
+        return cls.create(file_name, file_path, file_format)
 
-        workbook = cls(file_name=file_name, file_path=file_path, format=file_format)
-        workbook.save()
-        return workbook
+    @classmethod
+    def create(cls, file_name, file_path, file_format):
+
+        f = cls(file_name=file_name, file_path=file_path, format=file_format)
+        f.save()
+        return f
 
 
-class WorkSheet(models.Model):
-    work_book = models.ForeignKey(WorkBook)
-    sheet_name = models.CharField(default='', max_length=200)
-    sheet_path = models.TextField(default='')
+class Conversion(models.Model):
+    from_file = models.ForeignKey(File)
+    to_file = models.OneToOneField(File, related_name='produced')
+    success = models.BooleanField()
     created = models.DateTimeField(auto_now_add=True, default=datetime.datetime.now())
 
     @classmethod
-    def create(cls, workbook, sheet_name):
-        sheet_path = workbook.directory() + sheet_name + '.csv'
-        worksheet = cls(workbook=workbook, sheet_name=sheet_name, sheet_path=sheet_path)
-        worksheet.save()
-        return worksheet
+    def create(cls, from_file, to_file):
+        c = cls(from_file=from_file, to_file=to_file, success=False)
+        c.save()
+        return c
 
 
 class FormatNotSupported(Exception):
@@ -72,18 +84,42 @@ class FormatNotSupported(Exception):
 import xlrd
 from openpyxl import load_workbook
 import csv
+import zipfile
 
 
-def convert_xls(workbook):
+def unzip(zip):
+
+    if zip.format != ZIP:
+        raise FormatNotSupported('unzip functionality for ' + zip.file_name + ' not supported')
+
+    f = open(zip.file_path, 'rb')
+    z = zipfile.ZipFile(f)
+    unzippered = []
+    for name in z.namelist():
+        file_name = name
+        file_path = zip.directory() + name
+        z.extract(name, file_path)
+        unzipped = File.create(file_name, file_path, File.extract_format(file_name))
+        Conversion.create(zip, unzipped)
+        unzippered << unzipped
+    f.close()
+    return unzippered
+
+
+def convert_xls_to_csv(workbook):
     wb = xlrd.open_workbook(workbook.file_path)
     worksheets = []
     for sheet_name in wb.sheet_names():
 
         print "processing " + sheet_name
-        worksheet = WorkSheet.create(workbook, sheet_name)
+        file_name = sheet_name + '.' + CSV
+        file_path = workbook.directory() + file_name
+        file_format = CSV
+        worksheet = File.create(file_name, file_path, file_format)
+        conversion = Conversion.create(workbook, worksheet)
 
         try:
-            os.remove(worksheet.sheet_path)
+            os.remove(worksheet.file_path)
         except OSError:
             pass
 
@@ -92,7 +128,7 @@ def convert_xls(workbook):
         number_of_columns = sheet.ncols - 1
         current_row = -1
 
-        with open(worksheet.sheet_path, 'w', newline='') as fp:
+        with open(worksheet.file_path, 'w', newline='') as fp:
             writer = csv.writer(fp, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
             while current_row < number_of_rows:
                 line = []
@@ -106,17 +142,26 @@ def convert_xls(workbook):
 
                 writer.writerow(line)
 
+        conversion.success = True
+        conversion.save()
+
         worksheets << worksheet
+
     return worksheets
 
-def convert_xlsx(workbook):
+
+def convert_xlsx_to_csv(workbook):
     wb = load_workbook(workbook.file_path)
     sheet_names = wb.get_sheet_names()
     worksheets = []
     for sheet_name in sheet_names:
 
-        print "reading " + sheet_name
-        worksheet = WorkSheet.create(workbook, sheet_name)
+        print "processing " + sheet_name
+        file_name = sheet_name + '.' + CSV
+        file_path = workbook.directory() + file_name
+        file_format = CSV
+        worksheet = File.create(file_name, file_path, file_format)
+        conversion = Conversion.create(workbook, worksheet)
 
         try:
             os.remove(worksheet.sheet_path)
@@ -124,7 +169,7 @@ def convert_xlsx(workbook):
             pass
 
         sheet = wb[sheet_name]
-        with open(worksheet.sheet_path, 'w', newline='') as fp:
+        with open(worksheet.file_path, 'w', newline='') as fp:
             writer = csv.writer(fp, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
             for row in sheet.rows:
                 line = []
@@ -133,15 +178,18 @@ def convert_xlsx(workbook):
                         line << cell.value
                 writer.writerow(line)
 
+        conversion.success = True
+        conversion.save()
+
         worksheets << worksheet
 
     return worksheets
 
 
-def convert(workbook):
-    if workbook.format == XLS:
-        return convert_xls(workbook)
-    elif workbook.format == XLSX:
-        return convert_xlsx(workbook)
+def convert_to_csv(file_record):
+    if file_record.format == XLS:
+        return convert_xls_to_csv(file_record)
+    elif file_record.format == XLSX:
+        return convert_xlsx_to_csv(file_record)
     else:
-        raise FormatNotSupported(workbook.format + " not supported")
+        raise FormatNotSupported('convert to csv functionality for ' + file_record.file_name + ' not supported')

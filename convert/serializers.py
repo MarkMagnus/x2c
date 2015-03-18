@@ -1,27 +1,18 @@
 __author__ = 'mark'
 
 from rest_framework import serializers
-from convert.models import WorkBook, WorkSheet
+from convert.models import File, Conversion
 
-class WorkBookSerializer(serializers.Serializer):
+
+class FileSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
-        model = WorkBook
+        model = File
+        fields = ('file_name', 'file_path', 'format', 'created')
 
-    def create(self, validated_data):
-        return WorkBook.objects.create(**validated_data)
 
-    def update(self, instance, validated_data):
-        instance.file_name = validated_data.get('file_name', instance.file_name)
-        instance.file_path = validated_data.get('file_path', instance.file_path)
-        instance.save
-        return instance
-
-class WorkSheetSerializer(serializers.Serializer):
+class ConversionSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
-        model = WorkSheet
+        model = Conversion
+        fields = ('from_file', 'to_file', 'created')
 
-    def create(self, validated_data):
-        return WorkSheet.objects.create(**validated_data)
-
-    def update(self, instance, validated_data):
 
