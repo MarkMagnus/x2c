@@ -1,5 +1,5 @@
 import os
-from django.http import StreamingHttpResponse, HttpResponse
+from django.http import StreamingHttpResponse
 from django.core.servers.basehttp import FileWrapper
 from django.shortcuts import get_object_or_404
 from convert.models import File, Conversion, FormatNotSupported, convert_to_csv, unzip
@@ -16,7 +16,7 @@ class FileUploadView(views.APIView):
     def post(self, request, filename):
 
         try:
-            file_record = File.create(request.data['file'], filename)
+            file_record = File.create_from_file(request.data['file'], filename)
             serializer = FileSerializer(file_record)
             return Response(serializer.data)
         except FormatNotSupported:

@@ -1,5 +1,5 @@
 from django.db import models
-import datetime
+from django.utils import timezone
 
 import string
 import random
@@ -30,27 +30,29 @@ class File(models.Model):
     file_name = models.CharField(max_length=200, default='')
     file_path = models.TextField(default='')
     format = models.CharField(max_length=4, default=XLS, choices=FORMAT_CHOICES)
-    created = models.DateTimeField(auto_now_add=True, default=datetime.datetime.now())
+    created = models.DateTimeField(auto_now_add=True, default=timezone.now())
 
     def directory(self):
-        return self.file_name.replace(self.file_name, '')
+        return self.file_path.replace(self.file_name, '')
 
     @classmethod
     def extract_format(cls, file_name):
-        if file_name.lower().endswith('.xls'):
+        if file_name.lower().endswith('.' + XLS):
             return XLS
-        elif file_name.lower().endswith('.xlsx'):
+        elif file_name.lower().endswith('.' + XLSX):
             return XLSX
-        elif file_name.lower().endswith('.csv'):
+        elif file_name.lower().endswith('.' + CSV):
             return CSV
+        elif file_name.lower().endswith('.' + ZIP):
+            return ZIP
         else:
             raise FormatNotSupported(file_name + ' is invalid type')
 
     @classmethod
-    def create(cls, file_object, file_name):
+    def create_from_file(cls, file_object, file_name):
 
         file_path = get_new_path(file_name)
-        shutil.move(file_object, file_path)
+        shutil.move(file_object.name, file_path)
         file_format = cls.extract_format(file_name)
 
         return cls.create(file_name, file_path, file_format)
@@ -65,13 +67,13 @@ class File(models.Model):
 
 class Conversion(models.Model):
     from_file = models.ForeignKey(File)
-    to_file = models.OneToOneField(File, related_name='produced')
-    success = models.BooleanField()
-    created = models.DateTimeField(auto_now_add=True, default=datetime.datetime.now())
+    to_file = models.OneToOneField(File, related_name='produced_by_conversion')
+    success = models.BooleanField(default=False)
+    created = models.DateTimeField(auto_now_add=True, default=timezone.now())
 
     @classmethod
     def create(cls, from_file, to_file):
-        c = cls(from_file=from_file, to_file=to_file, success=False)
+        c = cls(from_file=from_file, to_file=to_file)
         c.save()
         return c
 
@@ -87,21 +89,28 @@ import csv
 import zipfile
 
 
-def unzip(zip):
+def unzip(zip_record):
 
-    if zip.format != ZIP:
-        raise FormatNotSupported('unzip functionality for ' + zip.file_name + ' not supported')
+    if zip_record.format != ZIP:
+        raise FormatNotSupported('unzip functionality for ' + zip_record.file_name + ' not supported')
 
-    f = open(zip.file_path, 'rb')
-    z = zipfile.ZipFile(f)
+    f = open(zip_record.file_path, 'rb')
+
     unzippered = []
-    for name in z.namelist():
-        file_name = name
-        file_path = zip.directory() + name
-        z.extract(name, file_path)
-        unzipped = File.create(file_name, file_path, File.extract_format(file_name))
-        Conversion.create(zip, unzipped)
-        unzippered << unzipped
+    with zipfile.ZipFile(f) as z:
+        for info in z.infolist():
+
+            file_name = info.filename
+            file_path = zip_record.directory() + info.filename
+
+            unpacked = open(file_path, 'w')
+            unpacked.write(z.read(info.filename))
+            unpacked.close()
+
+            unzipped = File.create(file_name, file_path, File.extract_format(file_name))
+            Conversion.create(zip_record, unzipped)
+            unzippered.append(unzipped)
+
     f.close()
     return unzippered
 
@@ -128,7 +137,7 @@ def convert_xls_to_csv(workbook):
         number_of_columns = sheet.ncols - 1
         current_row = -1
 
-        with open(worksheet.file_path, 'w', newline='') as fp:
+        with open(worksheet.file_path, 'w') as fp:
             writer = csv.writer(fp, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
             while current_row < number_of_rows:
                 line = []
@@ -138,14 +147,14 @@ def convert_xls_to_csv(workbook):
                 while current_cell < number_of_columns:
                     current_cell += 1
                     cell_value = sheet.cell_value(current_row, current_cell)
-                    line << cell_value
+                    line.append(cell_value)
 
                 writer.writerow(line)
 
         conversion.success = True
         conversion.save()
 
-        worksheets << worksheet
+        worksheets.append(worksheet)
 
     return worksheets
 
@@ -164,24 +173,24 @@ def convert_xlsx_to_csv(workbook):
         conversion = Conversion.create(workbook, worksheet)
 
         try:
-            os.remove(worksheet.sheet_path)
+            os.remove(worksheet.file_path)
         except OSError:
             pass
 
         sheet = wb[sheet_name]
-        with open(worksheet.file_path, 'w', newline='') as fp:
+        with open(worksheet.file_path, 'w') as fp:
             writer = csv.writer(fp, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
             for row in sheet.rows:
                 line = []
                 for cell in row:
                     if cell.value is not None:
-                        line << cell.value
+                        line.append(cell.value)
                 writer.writerow(line)
 
         conversion.success = True
         conversion.save()
 
-        worksheets << worksheet
+        worksheets.append(worksheet)
 
     return worksheets
 
