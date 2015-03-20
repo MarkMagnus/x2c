@@ -19,6 +19,9 @@ class FileUploadAndConversionTestCase(APITestCase):
 
     def setUp(self):
         self.user = User.objects.create_user('root', 'root@impactdata.com.au', 'elvis')
+        self.user.is_superuser = True
+        self.user.is_staff = True
+        self.user.save()
         client = APIClient()
         client.force_authenticate(user=self.user)
         self.client = client
@@ -159,16 +162,26 @@ class FileUploadAndConversionTestCase(APITestCase):
 
         response = self.client.delete('/convert/file/3')
         pp.pprint(response.content)
+        self.assertEqual(status.HTTP_204_NO_CONTENT, response.status_code)
 
         response = self.client.delete('/convert/file/7')
         pp.pprint(response.content)
+        self.assertEqual(status.HTTP_204_NO_CONTENT, response.status_code)
 
         response = self.client.get('/convert/conversion')
         pp.pprint(response.content)
+        conversions = response.data
+        self.assertEqual(2, len(conversions))
 
         response = self.client.delete('/convert/conversion/6')
         pp.pprint(response.content)
+        self.assertEqual('Not found.', response.data['detail'])
+        self.assertEqual(status.HTTP_404_NOT_FOUND, response.status_code)
 
+        response = self.client.delete('/convert/file/1')
+        pp.pprint(response.content)
+        files = response.data
+        self.assertEqual(0, len(files))
 
     def test_list(self):
         response = self.client.get('/convert/file', )
