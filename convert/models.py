@@ -51,9 +51,9 @@ class File(models.Model):
     @classmethod
     def create_from_file(cls, file_object, file_name):
 
+        file_format = cls.extract_format(file_name)  # raises FormatNotSupported error
         file_path = get_new_path(file_name)
         shutil.move(file_object.name, file_path)
-        file_format = cls.extract_format(file_name)
 
         return cls.create(file_name, file_path, file_format)
 
@@ -108,8 +108,10 @@ def unzip(zip_record):
             unpacked.close()
 
             unzipped = File.create(file_name, file_path, File.extract_format(file_name))
-            Conversion.create(zip_record, unzipped)
+            conversion = Conversion.create(zip_record, unzipped)
             unzippered.append(unzipped)
+            conversion.success = True
+            conversion.save()
 
     f.close()
     return unzippered

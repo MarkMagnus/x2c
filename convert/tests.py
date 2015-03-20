@@ -1,7 +1,183 @@
+import django
 from django.test import TestCase
-from convert.models import File, convert_xls_to_csv, convert_xlsx_to_csv, unzip, ZIP, CSV, XLS, XLSX
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.contrib.auth.models import User
+from rest_framework import status
+from rest_framework.test import APITestCase, APIClient
+from convert.models import File, convert_xls_to_csv, convert_xlsx_to_csv, unzip, ZIP, XLS, XLSX
+
 import os
+import io
 import shutil
+import pprint
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE')
+django.setup()
+
+
+class FileUploadAndConversionTestCase(APITestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user('root', 'root@impactdata.com.au', 'elvis')
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        self.client = client
+
+    def tearDown(self):
+        self.user.delete()
+
+    def test_upload(self):
+
+        pp = pprint.PrettyPrinter(indent=4)
+
+        original = os.path.dirname(os.path.realpath(__file__)) + '/samples/test.zip'
+        zip_file = SimpleUploadedFile("test.zip", open(original, 'rb').read(), content_type="application/zip")
+        response = self.client.post('/convert/upload', {'file': zip_file})
+        self.assertEquals(response.status_code, status.HTTP_201_CREATED)
+
+        pp.pprint(response.data)
+
+        file_id = int(response.data['id'])
+        self.assertTrue(0 < file_id)
+        self.assertEqual('test.zip', response.data['file_name'])
+        self.assertEqual('zip', response.data['format'])
+        self.assertTrue('/test.zip' in response.data['file_path'])
+        self.assertTrue('/tmp/' in response.data['file_path'])
+
+        response = self.client.get('/convert/file')
+        pp.pprint(response.data)
+        files = response.data
+        self.assertEqual(1, len(files))
+        file = files[0]
+        self.assertEqual(file_id, file['id'])
+        self.assertEqual('test.zip', file['file_name'])
+        self.assertEqual('zip', file['format'])
+        self.assertTrue(str(file['file_path']).endswith(u'test.zip'))
+        self.assertTrue('tmp' in file['file_path'])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get('/convert/file/' + str(file_id))
+        pp.pprint(response.content)
+        self.assertEqual(1, response.data['id'])
+        self.assertEqual('test.zip', response.data['file_name'])
+        self.assertEqual('zip', response.data['format'])
+        self.assertTrue('/test.zip' in response.data['file_path'])
+        self.assertTrue('/tmp/' in response.data['file_path'])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get('/convert/file/' + str(file_id) + '/unzip')
+        pp.pprint(response.content)
+        files = response.data
+        self.assertEqual(2, len(files))
+        file = files[0]
+        self.assertEqual('GDrive.xlsx', file['file_name'])
+        self.assertEqual('xlsx', file['format'])
+        self.assertTrue('/GDrive.xlsx' in file['file_path'])
+        self.assertTrue('/tmp/' in file['file_path'])
+        file = files[1]
+        self.assertEqual('MSSQL_IOPS.xls', file['file_name'])
+        self.assertEqual('xls', file['format'])
+        self.assertTrue('/MSSQL_IOPS.xls' in file['file_path'])
+        self.assertTrue('/tmp/' in file['file_path'])
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        response = self.client.get('/convert/conversion')
+        pp.pprint(response.content)
+        self.assertEqual(2, len(response.data))
+        self.assertTrue(response.data[0]['success'])
+        self.assertTrue(response.data[1]['success'])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get('/convert/conversion/1')
+        pp.pprint(response.content)
+        self.assertTrue(response.data['success'])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get('/convert/conversion?from_file_id=' + str(file_id))
+        pp.pprint(response.content)
+        self.assertEqual(2, len(response.data))
+        file = files[0]
+        self.assertEqual('GDrive.xlsx', file['file_name'])
+        self.assertEqual('xlsx', file['format'])
+        self.assertTrue('/GDrive.xlsx' in file['file_path'])
+        self.assertTrue('/tmp/' in file['file_path'])
+        file = files[1]
+        self.assertEqual('MSSQL_IOPS.xls', file['file_name'])
+        self.assertEqual('xls', file['format'])
+        self.assertTrue('/MSSQL_IOPS.xls' in file['file_path'])
+        self.assertTrue('/tmp/' in file['file_path'])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get('/convert/file/2/to_csv')
+        pp.pprint(response.content)
+        self.assertEqual(1, len(response.data))
+        self.assertEqual(u'RawData.csv', response.data[0]['file_name'])
+        self.assertEqual(u'csv', response.data[0]['format'])
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        response = self.client.get('/convert/file/4/download')
+        buff = io.StringIO(u"".join(response.streaming_content))
+        csv_file = os.path.dirname(os.path.realpath(__file__)) + '/samples/RawData.csv'
+        with open(csv_file, 'wb+') as csv:
+            for line in buff.readlines():
+                print line
+                csv.write(line)
+
+        response = self.client.get('/convert/file/3/to_csv')
+        pp.pprint(response.content)
+        files = response.data
+        self.assertEqual(3, len(response.data))
+        file = files[0]
+        self.assertEqual('Sheet1.csv', file['file_name'])
+        response = self.client.get('/convert/file/5/download')
+        buff = io.StringIO(u"".join(response.streaming_content))
+        csv_file = os.path.dirname(os.path.realpath(__file__)) + '/samples/Sheet1.csv'
+        with open(csv_file, 'wb+') as csv:
+            for line in buff.readlines():
+                print line
+                csv.write(line)
+
+        file = files[1]
+        self.assertEqual('Sheet2.csv', file['file_name'])
+        response = self.client.get('/convert/file/6/download')
+        buff = io.StringIO(u"".join(response.streaming_content))
+        csv_file = os.path.dirname(os.path.realpath(__file__)) + '/samples/Sheet2.csv'
+        with open(csv_file, 'wb+') as csv:
+            for line in buff.readlines():
+                print line
+                csv.write(line)
+
+        file = files[2]
+        self.assertEqual('Sheet3.csv', file['file_name'])
+        response = self.client.get('/convert/file/7/download')
+        buff = io.StringIO(u"".join(response.streaming_content))
+        csv_file = os.path.dirname(os.path.realpath(__file__)) + '/samples/Sheet3.csv'
+        with open(csv_file, 'wb+') as csv:
+            for line in buff.readlines():
+                print line
+                csv.write(line)
+
+        response = self.client.delete('/convert/file/3')
+        pp.pprint(response.content)
+
+        response = self.client.delete('/convert/file/7')
+        pp.pprint(response.content)
+
+        response = self.client.get('/convert/conversion')
+        pp.pprint(response.content)
+
+        response = self.client.delete('/convert/conversion/6')
+        pp.pprint(response.content)
+
+
+    def test_list(self):
+        response = self.client.get('/convert/file', )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_list(self):
+        response = self.client.get('/convert/conversion')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
 
 
 class UnzipTestCase(TestCase):
