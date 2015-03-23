@@ -3,7 +3,7 @@ from django.core.servers.basehttp import FileWrapper
 from django.shortcuts import get_object_or_404
 from convert.models import File, Conversion, FormatNotSupported, convert_to_csv, unzip
 from convert.serializers import FileSerializer, ConversionSerializer
-from rest_framework import status, views, viewsets, permissions
+from rest_framework import status, views, viewsets, permissions, mixins, generics
 from rest_framework.decorators import detail_route
 from rest_framework.response import Response
 from rest_framework.parsers import FileUploadParser, MultiPartParser, FormParser
@@ -48,6 +48,11 @@ class FileViewSet(viewsets.ModelViewSet):
     queryset = File.objects.all()
     serializer_class = FileSerializer
 
+    def destroy(self, request, *args, **kwargs):
+        file_record = self.get_object()
+        file_record.cascade_delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @detail_route(methods=['get'])
     def to_csv(self, request, pk=None):
         queryset = File.objects.all()
@@ -80,10 +85,9 @@ class FileViewSet(viewsets.ModelViewSet):
         return response
 
 
-class ConversionViewSet(viewsets.ModelViewSet):
+class ConversionViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = Conversion.objects.all()
     serializer_class = ConversionSerializer
-    # permission_classes = permissions.AllowAny
 
 

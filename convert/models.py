@@ -31,9 +31,26 @@ class File(models.Model):
     file_path = models.TextField(default='')
     format = models.CharField(max_length=4, default=XLS, choices=FORMAT_CHOICES)
     created = models.DateTimeField(auto_now_add=True, default=timezone.now())
+    deleted = models.BooleanField(default=False)
 
     def directory(self):
         return self.file_path.replace(self.file_name, '')
+
+    def cascade_delete(self):
+        if os.path.exists(self.file_path):
+            os.remove(self.file_path)
+            self.deleted = True
+            self.save()
+            self.try_delete_directory()
+        for conversion in Conversion.objects.all().filter(from_file=self):
+            conversion.to_file.cascade_delete()
+
+    def try_delete_directory(self):
+        if not os.path.isdir(self.directory()):
+            return
+        files = os.listdir(self.directory())
+        if len(files) == 0:
+            os.rmdir(self.directory())
 
     @classmethod
     def extract_format(cls, file_name):

@@ -164,24 +164,26 @@ class FileUploadAndConversionTestCase(APITestCase):
         pp.pprint(response.content)
         self.assertEqual(status.HTTP_204_NO_CONTENT, response.status_code)
 
-        response = self.client.delete('/convert/file/7')
-        pp.pprint(response.content)
-        self.assertEqual(status.HTTP_204_NO_CONTENT, response.status_code)
-
         response = self.client.get('/convert/conversion')
         pp.pprint(response.content)
         conversions = response.data
-        self.assertEqual(2, len(conversions))
+        self.assertEqual(6, len(conversions))
 
-        response = self.client.delete('/convert/conversion/6')
+        response = self.client.delete('/convert/conversion/16')
         pp.pprint(response.content)
-        self.assertEqual('Not found.', response.data['detail'])
-        self.assertEqual(status.HTTP_404_NOT_FOUND, response.status_code)
+        self.assertEqual("Method 'DELETE' not allowed.", response.data['detail'])
+        self.assertEqual(status.HTTP_405_METHOD_NOT_ALLOWED, response.status_code)
 
         response = self.client.delete('/convert/file/1')
         pp.pprint(response.content)
+        self.assertEqual(status.HTTP_204_NO_CONTENT, response.status_code)
+
+        response = self.client.get('/convert/file', )
+        pp.pprint(response.content)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         files = response.data
-        self.assertEqual(0, len(files))
+        for f in files:
+            self.assertTrue(f['deleted'])
 
     def test_list(self):
         response = self.client.get('/convert/file', )

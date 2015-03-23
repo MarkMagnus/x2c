@@ -13,7 +13,7 @@ class FileSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta:
         model = File
-        fields = ('id', 'file_name', 'file_path', 'format', 'created')
+        fields = ('id', 'file_name', 'file_path', 'format', 'created', 'deleted')
 
 
 class ConversionSerializer(serializers.HyperlinkedModelSerializer):
