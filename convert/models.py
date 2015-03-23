@@ -43,7 +43,8 @@ class File(models.Model):
             self.save()
             self.try_delete_directory()
         for conversion in Conversion.objects.all().filter(from_file=self):
-            conversion.to_file.cascade_delete()
+            if conversion.success:
+                conversion.to_file.cascade_delete()
 
     def try_delete_directory(self):
         if not os.path.isdir(self.directory()):
