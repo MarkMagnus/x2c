@@ -33,7 +33,7 @@ honcho==0.5.0
 httplib2==0.9
 httpretty==0.8.4
 jdcal==1.0
-Jinja2==2.7.3
+Jinja2==2.11.3
 kombu==3.0.24
 lockfile==0.8
 lxml==3.3.3
