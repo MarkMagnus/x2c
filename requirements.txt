@@ -36,7 +36,7 @@ jdcal==1.0
 Jinja2==2.7.3
 kombu==3.0.24
 lockfile==0.8
-lxml==3.3.3
+lxml==4.6.3
 MarkupSafe==0.23
 mccabe==0.2.1
 mock==1.0.1
