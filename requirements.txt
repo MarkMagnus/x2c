@@ -86,7 +86,7 @@ tornado==4.0
 Twisted-Core==13.2.0
 Twisted-Web==13.2.0
 unity-lens-photos==1.0
-urllib3==1.9.1
+urllib3==1.26.5
 xdiagnose===3.6.3build2
 xlrd==0.9.3
 zope.interface==4.0.5
