@@ -51,7 +51,7 @@ pandas==0.15.1
 paramiko==1.15.1
 passlib==1.6.2
 pexpect==3.1
-Pillow==2.3.0
+Pillow==9.3.0
 piston-mini-client==0.7.5
 psycopg2==2.5.4
 pycparser==2.10
